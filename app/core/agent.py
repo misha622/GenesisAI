@@ -1,391 +1,171 @@
-﻿"""
-Genesis Agent - диалоговый ИИ-помощник.
+﻿"""Genesis Agent - dialog AI assistant with dataset search."""
 
-Принимает запросы пользователя на естественном языке,
-определяет намерение (intent) и вызывает нужный модуль:
-- Profiler: "проанализируй датасет"
-- Trainer: "обучи модель"
-- Registry: "найди лучшую модель"
-"""
-
-import json
-import os
+import json, os, re, pickle
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
-
-# Пути к модулям движка
 from app.core.engine.profiler import DatasetProfiler
 from app.core.engine.trainer import DatasetTrainer
 from app.core.engine.registry import ModelRegistry
 
-
 class Intent:
-    """Намерение, извлечённое из сообщения пользователя."""
-    ANALYZE = "analyze"           # анализ датасета
-    TRAIN = "train"               # обучение модели
-    FIND_BEST = "find_best"       # найти лучшую модель
-    LIST_MODELS = "list_models"   # список моделей
-    COMPARE = "compare"           # сравнить модели
-    PREDICT = "predict"           # предсказание
-    HELP = "help"                 # справка
-    UNKNOWN = "unknown"           # не распознано
-
+    ANALYZE = "analyze"
+    TRAIN = "train"
+    FIND_BEST = "find_best"
+    LIST_MODELS = "list_models"
+    COMPARE = "compare"
+    PREDICT = "predict"
+    DATASET_SEARCH = "dataset_search"
+    INSTALL_DATASET = "install_dataset"
+    HELP = "help"
+    UNKNOWN = "unknown"
 
 class AgentResponse:
-    """Ответ агента пользователю."""
     def __init__(self, message: str, data: Optional[Dict] = None, success: bool = True):
-        self.message = message
-        self.data = data or {}
-        self.success = success
-        self.timestamp = datetime.now().isoformat()
-
+        self.message = message; self.data = data or {}; self.success = success; self.timestamp = datetime.now().isoformat()
 
 class GenesisAgent:
-    """
-    Главный агент платформы Genesis AI.
-    
-    Принимает сообщения пользователя, распознаёт намерения,
-    вызывает соответствующие модули движка.
-    """
-    
-    # Ключевые слова для определения намерений
     INTENT_KEYWORDS = {
-        Intent.ANALYZE: [
-            "анализ", "профиль", "посмотри", "изучи", "покажи данные",
-            "что в датасете", "колонки", "столбцы", "пропуски",
-            "analyze", "profile", "explore", "inspect", "columns",
-        ],
-        Intent.TRAIN: [
-            "обучи", "тренируй", "построй модель", "модель", "обучение",
-            "train", "fit", "build model", "xgboost", "logistic",
-        ],
-        Intent.FIND_BEST: ["найди", "лучш", "best", "топ", "сам", 
-            "найди лучшую", "лучшая модель", "best model", "топ модель",
-            "самая точная", "покажи лучшую",
-        ],
-        Intent.LIST_MODELS: [
-            "список моделей", "все модели", "какие модели", "list models",
-            "покажи модели", "мои модели",
-        ],
-        Intent.COMPARE: [
-            "сравни", "сравнение", "compare", "что лучше",
-        ],
-        Intent.PREDICT: [
-            "предскажи", "прогноз", "predict", "получить результат",
-        ],
-        Intent.HELP: [
-            "помощь", "что ты умеешь", "команды", "help", "справка",
-            "начнём", "привет", "hi", "hello",
-        ],
+        Intent.ANALYZE: ["анализ","профиль","посмотри","изучи","покажи данные","колонки","столбцы","пропуски","analyze","profile","explore","inspect","columns"],
+        Intent.TRAIN: ["обучи","тренируй","построй модель","обучение","train","fit","build model","xgboost","logistic"],
+        Intent.FIND_BEST: ["найди лучшую","лучшая модель","best model","топ модель","самая точная","покажи лучшую"],
+        Intent.LIST_MODELS: ["список моделей","все модели","какие модели","list models","покажи модели","мои модели"],
+        Intent.COMPARE: ["сравни","сравнение","compare","что лучше"],
+        Intent.PREDICT: ["предскажи","прогноз","predict","получить результат"],
+        Intent.DATASET_SEARCH: ["найди датасет","поищи данные","dataset","нужны данные","хочу создать ии","создать ии","собери данные","какие датасеты","подбери датасет","где взять данные"],
+        Intent.INSTALL_DATASET: ["установи","скачай","загрузи датасет","install","download","под номером","выбираю","давай этот"],
+        Intent.HELP: ["помощь","что ты умеешь","команды","help","справка","начнём","привет","hi","hello"],
     }
-    
-    def __init__(
-        self,
-        profiler: Optional[DatasetProfiler] = None,
-        trainer: Optional[DatasetTrainer] = None,
-        registry: Optional[ModelRegistry] = None,
-    ):
+
+    def __init__(self, profiler=None, trainer=None, registry=None):
         self.profiler = profiler or DatasetProfiler()
         self.trainer = trainer or DatasetTrainer()
         self.registry = registry or ModelRegistry()
-        self.current_dataset: Optional[str] = None  # путь к загруженному датасету
+        self.current_dataset: Optional[str] = None
+        self.last_search_results: List = []
         self.conversation_history: List[Dict] = []
-    
+
     def detect_intent(self, message: str) -> str:
-        """
-        Определение намерения пользователя по ключевым словам.
-        
-        В реальной системе здесь будет LLM (GPT/Llama),
-        сейчас используем простой keyword matching.
-        """
         message_lower = message.lower()
-        
-        # Считаем совпадения по каждой категории
+        # Priority checks`n        if "лучшую модель" in message_lower or "лучшая модель" in message_lower or "best model" in message_lower: return Intent.FIND_BEST
+        if "датасет" in message_lower or "dataset" in message_lower:
+            if any(w in message_lower for w in ["установи","скачай","install","download","номер","выбираю"]):
+                return Intent.INSTALL_DATASET
+            return Intent.DATASET_SEARCH
         scores = {}
         for intent, keywords in self.INTENT_KEYWORDS.items():
             score = sum(1 for kw in keywords if kw in message_lower)
-            if score > 0:
-                scores[intent] = score
-        
-        if not scores:
-            return Intent.UNKNOWN
-        
-        # Возвращаем намерение с максимальным счётом
+            if score > 0: scores[intent] = score
+        if not scores: return Intent.UNKNOWN
         return max(scores, key=scores.get)
-    
+
     def extract_file_path(self, message: str) -> Optional[str]:
-        """Извлечение пути к файлу из сообщения."""
-        # Ищем слова заканчивающиеся на .csv, .json, .parquet
-        import re
-        patterns = [
-            r'[\w\\/:.-]+\.(?:csv|json|parquet|xlsx?)',
-            r'["\']([\w\\/:.-]+\.(?:csv|json|parquet|xlsx?))["\']',
-        ]
+        patterns = [r'[\w\\/:.-]+\.(?:csv|json|parquet|xlsx?)', r'["\']([\w\\/:.-]+\.(?:csv|json|parquet|xlsx?))["\']']
         for pattern in patterns:
             match = re.search(pattern, message, re.IGNORECASE)
             if match:
                 path = match.group(1) if match.lastindex else match.group(0)
-                if os.path.exists(path):
-                    return path
-        
-        # Если нет пути, но есть текущий датасет
-        if self.current_dataset:
-            return self.current_dataset
-        
-        return None
-    
+                if os.path.exists(path): return path
+        return self.current_dataset
+
     def extract_target_column(self, message: str) -> Optional[str]:
-        """Извлечение целевой колонки из сообщения."""
-        import re
-        # Паттерны: "целевая колонка X", "таргет X", "предскажи X", "target=X"
-        patterns = [
-            r'(?:целевая|таргет|target|предска(?:жи|зать)|predict)\s+(?:колонка|столбец|переменная)?\s*[=:]*\s*["\']?(\w+)["\']?',
-            r'target[=:]\s*["\']?(\w+)["\']?',
-        ]
+        patterns = [r'(?:целевая|таргет|target|предска(?:жи|зать)|predict)\s+(?:колонка|столбец|переменная)?\s*[=:]*\s*["\']?(\w+)["\']?', r'target[=:]\s*["\']?(\w+)["\']?']
         for pattern in patterns:
             match = re.search(pattern, message, re.IGNORECASE)
-            if match:
-                return match.group(1)
+            if match: return match.group(1)
         return None
-    
+
     def extract_model_type(self, message: str) -> str:
-        """Извлечение типа модели из сообщения."""
         m = message.lower()
         if "логистическ" in m or "logistic" in m: return "logistic"
         if "случайн" in m or "random" in m or "лес" in m: return "random_forest"
         if "xgboost" in m or "xgb" in m: return "xgboost"
         if "линейн" in m or "linear" in m: return "linear"
-        return "xgboost"  # default
-    
-    def extract_model_ids(self, message: str) -> List[str]:
-        """Извлечение ID моделей из сообщения."""
-        import re
-        # Ищем ID в формате binary_classification_xgboost_20260101_120000
-        pattern = r'(\w+_\w+_\d{8}_\d{6}(?:_\d+)?)'
-        return re.findall(pattern, message)
-    
+        return "xgboost"
+
     def process(self, message: str) -> AgentResponse:
-        """
-        Обработка сообщения пользователя.
-        
-        Returns:
-            AgentResponse с ответом и данными
-        """
-        # Сохраняем в историю
-        self.conversation_history.append({
-            "role": "user",
-            "message": message,
-            "timestamp": datetime.now().isoformat(),
-        })
-        
-        # Определяем намерение
+        self.conversation_history.append({"role":"user","message":message,"timestamp":datetime.now().isoformat()})
         intent = self.detect_intent(message)
-        
-        # Обрабатываем
-        if intent == Intent.HELP:
-            return self._handle_help()
-        elif intent == Intent.ANALYZE:
-            return self._handle_analyze(message)
-        elif intent == Intent.TRAIN:
-            return self._handle_train(message)
-        elif intent == Intent.FIND_BEST:
-            return self._handle_find_best(message)
-        elif intent == Intent.LIST_MODELS:
-            return self._handle_list_models(message)
-        elif intent == Intent.COMPARE:
-            return self._handle_compare(message)
-        else:
-            return self._handle_unknown(message)
-    
-    def _handle_help(self) -> AgentResponse:
-        return AgentResponse(
-            message=(
-                "Я — Genesis AI Agent. Я умею:\n"
-                "📊 Анализировать датасеты: «проанализируй data.csv»\n"
-                "🤖 Обучать модели: «обучи модель на churn с xgboost»\n"
-                "🔍 Искать лучшую модель: «найди лучшую модель для классификации»\n"
-                "📋 Показывать список: «покажи все модели»\n"
-                "⚖️ Сравнивать: «сравни модель_1 и модель_2»\n\n"
-                "Что будем делать?"
-            ),
-            data={"intent": Intent.HELP},
-        )
-    
+        handlers = {
+            Intent.HELP: self._handle_help, Intent.ANALYZE: self._handle_analyze,
+            Intent.TRAIN: self._handle_train, Intent.FIND_BEST: self._handle_find_best,
+            Intent.LIST_MODELS: self._handle_list_models, Intent.COMPARE: self._handle_compare,
+            Intent.DATASET_SEARCH: self._handle_dataset_search, Intent.INSTALL_DATASET: self._handle_install_dataset,
+        }
+        if intent in handlers: return handlers[intent](message)
+        return self._handle_unknown(message)
+
+    def _handle_help(self, message="") -> AgentResponse:
+        return AgentResponse(message="Я Genesis AI Agent. Умею:\n📊 Анализировать датасеты\n🤖 Обучать модели\n🔍 Искать лучшую модель\n📋 Список моделей\n🔎 Искать датасеты\n📥 Устанавливать датасеты\n\nЧто делать?")
+
     def _handle_analyze(self, message: str) -> AgentResponse:
-        file_path = self.extract_file_path(message)
-        if not file_path:
-            return AgentResponse(
-                message="Укажите путь к файлу. Например: «проанализируй C:/data/housing.csv»",
-                success=False,
-            )
-        
+        fp = self.extract_file_path(message)
+        if not fp: return AgentResponse(message="Укажите путь к файлу", success=False)
         try:
-            self.profiler.run_full_profile(file_path)
-            self.current_dataset = file_path
-            summary = self.profiler.get_summary()
-            
-            return AgentResponse(
-                message=(
-                    f"Проанализировал {summary['file_info']['name']}:\n"
-                    f"• Строк: {summary['file_info']['rows']}\n"
-                    f"• Колонок: {summary['file_info']['columns']}\n"
-                    f"• Задача: {summary['suggested_ml_task']['task']}\n"
-                    f"• Целевая переменная: {summary['suggested_ml_task']['target_column']}\n"
-                    f"• Уверенность: {summary['suggested_ml_task']['confidence']}\n\n"
-                    "Хотите обучить модель?"
-                ),
-                data=summary,
-            )
-        except Exception as e:
-            return AgentResponse(
-                message=f"Ошибка при анализе: {str(e)}",
-                success=False,
-            )
-    
+            self.profiler.run_full_profile(fp); self.current_dataset = fp
+            s = self.profiler.get_summary()
+            return AgentResponse(message=f"Анализ {s['file_info']['name']}:\n• Строк: {s['file_info']['rows']}\n• Колонок: {s['file_info']['columns']}\n• Задача: {s['suggested_ml_task']['task']}\n• Таргет: {s['suggested_ml_task']['target_column']}\n\nОбучить модель?", data=s)
+        except Exception as e: return AgentResponse(message=f"Ошибка: {e}", success=False)
+
     def _handle_train(self, message: str) -> AgentResponse:
-        file_path = self.extract_file_path(message)
-        if not file_path:
-            return AgentResponse(
-                message="Укажите датасет. Например: «обучи модель на data.csv»",
-                success=False,
-            )
-        
-        target_col = self.extract_target_column(message)
-        model_type = self.extract_model_type(message)
-        
+        fp = self.extract_file_path(message)
+        if not fp: return AgentResponse(message="Укажите датасет", success=False)
+        tc = self.extract_target_column(message); mt = self.extract_model_type(message)
         try:
-            # Профилируем если ещё не
-            if self.current_dataset != file_path:
-                self.profiler.run_full_profile(file_path)
-                self.current_dataset = file_path
-            
-            profile_summary = self.profiler.get_summary()
-            task = profile_summary["suggested_ml_task"]["task"]
-            
-            if not target_col:
-                target_col = profile_summary["suggested_ml_task"]["target_column"]
-            
-            # Обучаем
-            result = self.trainer.train(
-                df=self.profiler.df,
-                target_col=target_col,
-                task=task,
-                model_type=model_type,
-            )
-            
-            # Регистрируем
-            model_id = self.registry.register(
-                model=pickle.load(open(result.model_path, "rb")),
-                metrics=result.metrics,
-                task=task,
-                model_type=model_type,
-                features=self.profiler.profile.feature_columns,
-                target=target_col,
-            )
-            
-            summary = self.trainer.get_summary()
-            
-            return AgentResponse(
-                message=(
-                    f"Модель обучена и сохранена!\n"
-                    f"• ID: {model_id}\n"
-                    f"• Тип: {model_type}\n"
-                    f"• Задача: {task}\n"
-                    f"• Метрики: {summary['metrics']}\n"
-                    f"• Важные признаки: {list(summary['feature_importance'].keys())[:5]}\n\n"
-                    "Можете спросить «найди лучшую модель» или «покажи список»"
-                ),
-                data={"model_id": model_id, **summary},
-            )
-        except Exception as e:
-            import traceback
-            return AgentResponse(
-                message=f"Ошибка при обучении: {str(e)}",
-                success=False,
-                data={"traceback": traceback.format_exc()},
-            )
-    
+            if self.current_dataset != fp: self.profiler.run_full_profile(fp); self.current_dataset = fp
+            ps = self.profiler.get_summary(); task = ps["suggested_ml_task"]["task"]
+            if not tc: tc = ps["suggested_ml_task"]["target_column"]
+            result = self.trainer.train(df=self.profiler.df, target_col=tc, task=task, model_type=mt)
+            mid = self.registry.register(model=pickle.load(open(result.model_path,"rb")), metrics=result.metrics, task=task, model_type=mt, features=self.profiler.profile.feature_columns, target=tc)
+            s = self.trainer.get_summary()
+            return AgentResponse(message=f"Модель обучена!\n• ID: {mid}\n• Тип: {mt}\n• Метрики: {s['metrics']}\n• Признаки: {list(s['feature_importance'].keys())[:5]}", data={"model_id":mid,**s})
+        except Exception as e: return AgentResponse(message=f"Ошибка: {e}", success=False)
+
     def _handle_find_best(self, message: str) -> AgentResponse:
-        m = message.lower()
-        task = "binary_classification"
-        metric = "accuracy"
-        
-        if "регресс" in m or "regression" in m:
-            task = "regression"
-            metric = "r2"
-        elif "мульти" in m or "multiclass" in m:
-            task = "multiclass_classification"
-        
+        m = message.lower(); task = "binary_classification"; metric = "accuracy"
+        if "регресс" in m or "regression" in m: task = "regression"; metric = "r2"
         best = self.registry.find_best(task, metric)
-        
-        if not best:
-            return AgentResponse(
-                message=f"Нет моделей для задачи '{task}'. Обучите первую модель!",
-                success=False,
-            )
-        
-        return AgentResponse(
-            message=(
-                f"Лучшая модель для {task}:\n"
-                f"• ID: {best['model_id']}\n"
-                f"• Тип: {best['model_type']}\n"
-                f"• Метрики: {best['metrics']}\n"
-                f"• Создана: {best['created_at']}"
-            ),
-            data=best,
-        )
-    
+        if not best: return AgentResponse(message=f"Нет моделей для '{task}'", success=False)
+        return AgentResponse(message=f"Лучшая для {task}:\n• ID: {best['model_id']}\n• Тип: {best['model_type']}\n• Метрики: {best['metrics']}", data=best)
+
     def _handle_list_models(self, message: str) -> AgentResponse:
-        task = None
-        m = message.lower()
-        if "классифик" in m or "classif" in m: task = "binary_classification"
-        if "регресс" in m or "regression" in m: task = "regression"
-        
-        models = self.registry.list_models(task=task)
-        
-        if not models:
-            return AgentResponse(
-                message="В реестре пока нет моделей. Обучите первую!",
-                success=False,
-            )
-        
-        lines = [f"Всего моделей: {len(models)}"]
-        for rec in models[:5]:
-            lines.append(f"• {rec['model_id'][:50]}... — {rec['task']} ({rec['model_type']})")
-        
-        return AgentResponse(
-            message="\n".join(lines),
-            data={"models": models},
-        )
-    
+        models = self.registry.list_models()
+        if not models: return AgentResponse(message="Реестр пуст", success=False)
+        return AgentResponse(message="\n".join([f"• {r['model_id'][:50]}... — {r['task']}" for r in models[:5]]), data={"models":models})
+
     def _handle_compare(self, message: str) -> AgentResponse:
-        ids = self.extract_model_ids(message)
-        
-        if len(ids) < 2:
-            return AgentResponse(
-                message="Укажите ID моделей для сравнения. Пример: «сравни model_id_1 и model_id_2»",
-                success=False,
-            )
-        
+        ids = re.findall(r'(\w+_\w+_\d{8}_\d{6}(?:_\d+)?)', message)
+        if len(ids) < 2: return AgentResponse(message="Укажите ID моделей", success=False)
         df = self.registry.compare_models(ids)
-        
-        return AgentResponse(
-            message=f"Сравнение {len(ids)} моделей:\n{df.to_string()}",
-            data={"comparison": df.to_dict()},
-        )
-    
+        return AgentResponse(message=f"Сравнение:\n{df.to_string()}", data={"comparison":df.to_dict()})
+
+    def _handle_dataset_search(self, message: str) -> AgentResponse:
+        from app.core.engine.dataset_finder import DatasetFinder
+        finder = DatasetFinder()
+        query = message
+        for prefix in ["хочу создать ии","создать ии","найди датасет для","найди датасет","поищи данные","подбери датасет"]:
+            if prefix in message.lower(): query = message.lower().split(prefix)[-1].strip(); break
+        datasets = finder.search(query, max_results=5)
+        self.last_search_results = datasets
+        formatted = finder.format_for_chat(datasets)
+        return AgentResponse(message=formatted, data={"datasets":[{"title":d.title,"url":d.url,"source":d.source} for d in datasets]})
+
+    def _handle_install_dataset(self, message: str) -> AgentResponse:
+        from app.core.engine.dataset_finder import DatasetFinder
+        finder = DatasetFinder()
+        match = re.search(r'(\d+)', message)
+        if not match: return AgentResponse(message="Напишите номер датасета. Например: «установи 1»", success=False)
+        num = int(match.group(1))
+        if not self.last_search_results: self.last_search_results = finder.search("", max_results=5)
+        if num < 1 or num > len(self.last_search_results): return AgentResponse(message=f"Номер от 1 до {len(self.last_search_results)}", success=False)
+        chosen = self.last_search_results[num-1]
+        try:
+            path = finder.install_dataset(chosen.url); self.current_dataset = path
+            self.profiler.run_full_profile(path); s = self.profiler.get_summary()
+            return AgentResponse(message=f"Установил: **{chosen.title}**\nПуть: {path}\n\nАнализ:\n• Строк: {s['file_info']['rows']}\n• Колонок: {s['file_info']['columns']}\n• Задача: {s['suggested_ml_task']['task']}\n\nОбучить модель?", data={"dataset_path":path,"profile":s})
+        except Exception as e: return AgentResponse(message=f"Не удалось: {e}\nОткройте вручную:\n{chosen.url}", success=False)
+
     def _handle_unknown(self, message: str) -> AgentResponse:
-        return AgentResponse(
-            message=(
-                f"Не совсем понял запрос: «{message}»\n"
-                "Попробуйте: «проанализируй датасет», «обучи модель», "
-                "«покажи список моделей», «помощь»"
-            ),
-            success=False,
-            data={"intent": Intent.UNKNOWN},
-        )
+        return AgentResponse(message=f"Не понял: «{message}»\nПопробуйте: «анализ», «обучи», «найди датасет», «помощь»", success=False)
 
 
-# Необходимый импорт для _handle_train
-import pickle
 
