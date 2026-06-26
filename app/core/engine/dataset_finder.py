@@ -29,13 +29,66 @@ class DatasetFinder:
 
     def search(self, query: str, task: Optional[str] = None, max_results: int = 5) -> List[DatasetInfo]:
         results = []
-        hf_results = self._search_huggingface(query, max_results)
-        results.extend(hf_results)
+        # 1. Kaggle API (реальные датасеты, тысячи)
+        kaggle_results = self._search_kaggle(query, max_results)
+        results.extend(kaggle_results)
+        # 2. HuggingFace API
+        if len(results) < max_results:
+            hf_results = self._search_huggingface(query, max_results - len(results))
+            results.extend(hf_results)
+        # 3. Локальная база
         if len(results) < max_results:
             local_results = self._search_local(query, task, max_results - len(results))
             existing_urls = {r.url for r in results}
             results.extend([r for r in local_results if r.url not in existing_urls])
         return results[:max_results]
+
+    def _search_kaggle(self, query: str, max_results: int) -> List[DatasetInfo]:
+        results = []
+        try:
+            from kaggle.api.kaggle_api_extended import KaggleApi
+            api = KaggleApi()
+            api.authenticate()
+            datasets = api.dataset_list(search=query, sort_by='votes', max_size=max_results)
+            for ds in datasets[:max_results]:
+                try:
+                    results.append(DatasetInfo(
+                        title=str(ds.title or ''),
+                        description=str(ds.description or '')[:200],
+                        url=f'https://www.kaggle.com/datasets/{ds.ref}',
+                        source='kaggle',
+                        task=self._guess_task(str(ds.title)+' '+str(ds.tags or '')),
+                        size=str(getattr(ds, 'size', '?')) or '?',
+                        format=str(getattr(ds, 'file_type', 'CSV')),
+                        rating=float(getattr(ds, 'usability', 0) or 0),
+                        downloads=int(getattr(ds, 'totalDownloads', 0) or 0),
+                        tags=list(getattr(ds, 'tags', []) or []),
+                    ))
+                except: continue
+        except Exception as e:
+            print(f'Kaggle API: {e}')
+        return results
+
+    def install_dataset(self, dataset_url: str, target_dir: str = './datasets') -> str:
+        import os, subprocess
+        os.makedirs(target_dir, exist_ok=True)
+        if 'kaggle.com/datasets/' in dataset_url:
+            ref = dataset_url.split('kaggle.com/datasets/')[-1]
+            path = os.path.join(target_dir, ref.replace('/', '_'))
+            os.makedirs(path, exist_ok=True)
+            try:
+                from kaggle.api.kaggle_api_extended import KaggleApi
+                api = KaggleApi(); api.authenticate()
+                api.dataset_download_files(ref, path=path, unzip=True)
+                print(f'Downloaded to {path}')
+                return path
+            except Exception as e:
+                print(f'Kaggle download: {e}')
+                raise
+        fname = dataset_url.split('/')[-1][:50]
+        path = f'{target_dir}/{fname}'
+        with open(path, 'w') as f: f.write(f'# {dataset_url}')
+        return path
 
     def _search_huggingface(self, query: str, max_results: int) -> List[DatasetInfo]:
         results = []

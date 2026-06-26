@@ -7,6 +7,21 @@ from app.core.engine.profiler import DatasetProfiler
 from app.core.engine.trainer import DatasetTrainer
 from app.core.engine.registry import ModelRegistry
 
+class Intent:
+    ANALYZE = "analyze"; TRAIN = "train"; FIND_BEST = "find_best"
+    LIST_MODELS = "list_models"; COMPARE = "compare"; DATASET_SEARCH = "dataset_search"
+    INSTALL_DATASET = "install_dataset"; HELP = "help"; UNKNOWN = "unknown"
+
+class Intent:
+    ANALYZE = "analyze"; TRAIN = "train"; FIND_BEST = "find_best"
+    LIST_MODELS = "list_models"; COMPARE = "compare"; DATASET_SEARCH = "dataset_search"
+    INSTALL_DATASET = "install_dataset"; HELP = "help"; UNKNOWN = "unknown"
+
+class Intent:
+    ANALYZE = "analyze"; TRAIN = "train"; FIND_BEST = "find_best"
+    LIST_MODELS = "list_models"; COMPARE = "compare"; DATASET_SEARCH = "dataset_search"
+    INSTALL_DATASET = "install_dataset"; HELP = "help"; UNKNOWN = "unknown"
+
 class AgentResponse:
     def __init__(self, message: str, data=None, success: bool = True):
         self.message = message; self.data = data or {}; self.success = success
