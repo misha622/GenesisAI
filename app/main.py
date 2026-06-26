@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 
-app = FastAPI(title="Genesis AI", version="0.7.0")
+app = FastAPI(title="Genesis AI", version="0.8.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -131,8 +131,52 @@ async def save_projects(data: Dict[str, Any]):
         db.add_project(p.get("name",""), p.get("desc",""), p.get("task","other"), p.get("icon","🤖"))
     return {"status": "saved"}
 
+# ---- API Keys ----
+@app.get("/api/keys")
+async def list_keys(user_name: str = None):
+    from app.db.database import GenesisDB
+    return {"keys": GenesisDB().list_api_keys(user_name)}
+
+@app.post("/api/keys/create")
+async def create_key(data: dict):
+    from app.db.database import GenesisDB
+    key = GenesisDB().create_api_key(data.get("user_name", "anonymous"), data.get("calls_limit", 100))
+    return key
+
+@app.delete("/api/keys/{api_key}")
+async def delete_key(api_key: str):
+    from app.db.database import GenesisDB
+    GenesisDB().delete_api_key(api_key)
+    return {"status": "deleted"}
+
+@app.get("/api/usage")
+async def usage_stats(api_key: str = None):
+    from app.db.database import GenesisDB
+    return {"usage": GenesisDB().get_usage_stats(api_key)}
+
+@app.post("/api/models/{model_id}/predict")
+async def model_predict(model_id: str, api_key: str, data: dict = None):
+    from app.db.database import GenesisDB
+    db = GenesisDB()
+    if not db.validate_api_key(api_key):
+        return {"error": "Invalid API key"}, 401
+    if not db.use_api_key(api_key, model_id):
+        return {"error": "API call limit exceeded"}, 429
+    from app.core.engine.registry import ModelRegistry
+    reg = ModelRegistry()
+    try:
+        model = reg.get_model(model_id)
+        features = data.get("features", []) if data else []
+        if features:
+            import numpy as np
+            prediction = model.predict(np.array(features).reshape(1, -1))
+            return {"prediction": prediction.tolist(), "model_id": model_id}
+        return {"message": "Model loaded", "model_id": model_id, "metrics": reg.get_record(model_id).get("metrics", {})}
+    except Exception as e:
+        return {"error": str(e)}, 500
+
 @app.get("/health")
-async def health(): return {"status": "healthy", "version": "0.7.0"}
+async def health(): return {"status": "healthy", "version": "0.8.0"}
 
 if __name__ == "__main__":
     import uvicorn
