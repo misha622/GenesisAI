@@ -6,13 +6,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+import json
 
-app = FastAPI(title="Genesis AI", version="0.1.0")
+app = FastAPI(title="Genesis AI", version="0.5.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Singleton agent
 _agent = None
 def get_agent():
     global _agent
@@ -24,6 +24,7 @@ def get_agent():
 class MessageRequest(BaseModel):
     message: str
     conversation_id: Optional[str] = None
+    projects: Optional[List[Dict]] = None
 
 class PublishRequest(BaseModel):
     author: str; model_id: str; title: str; description: str
@@ -37,17 +38,37 @@ async def root():
 
 @app.get("/api/agent/conversations")
 async def agent_conversations():
-    return {"conversations": []}
+    agent = get_agent()
+    conversations = agent.list_conversations()
+    return {"conversations": conversations}
+
+@app.post("/api/agent/chat/{conversation_id}/rename")
+async def rename_chat(conversation_id: str, data: dict):
+    agent = get_agent()
+    if conversation_id in agent.chat_store:
+        agent.chat_store[conversation_id]['title'] = data.get('title', conversation_id)
+        agent._save_chats()
+    return {"status": "renamed"}
+
+@app.delete("/api/agent/chat/{conversation_id}")
+async def delete_chat(conversation_id: str):
+    agent = get_agent()
+    if conversation_id in agent.chat_store:
+        del agent.chat_store[conversation_id]
+        agent._save_chats()
+    return {"status": "deleted"}
 
 @app.get("/api/agent/chat/{conversation_id}")
 async def agent_chat(conversation_id: str):
-    return {"messages": []}
+    agent = get_agent()
+    messages = agent.get_chat_history(conversation_id)
+    return {"messages": messages}
 
 @app.post("/api/agent/message")
 async def agent_message(req: MessageRequest):
     agent = get_agent()
-    response = agent.process(req.message)
-    return {"response": response.message, "conversation_id": req.conversation_id or "new", "data": response.data}
+    response = agent.process(req.message, req.conversation_id, req.projects)
+    return {"response": response.message, "conversation_id": req.conversation_id or "default", "data": response.data}
 
 @app.get("/api/marketplace/listings")
 async def marketplace_listings(task: Optional[str] = None):
@@ -109,9 +130,38 @@ async def dataset_search(q: str):
     results = DatasetFinder().search(q)
     return {"query": q, "results": [{"title": d.title, "url": d.url, "source": d.source} for d in results]}
 
+
+@app.get("/api/projects")
+async def get_projects():
+    import json, os
+    path = "projects.json"
+    if os.path.exists(path):
+        with open(path, 'r', encoding='utf-8') as f:
+            return {"projects": json.load(f)}
+    return {"projects": []}
+
+@app.post("/api/projects")
+async def save_projects(data: Dict[str, Any]):
+    import json
+    with open("projects.json", 'w', encoding='utf-8') as f:
+        json.dump(data.get("projects", []), f, indent=2, ensure_ascii=False)
+    return {"status": "saved"}
+
+@app.post("/api/projects/add")
+async def add_project(project: Dict[str, Any]):
+    import json, os
+    projects = []
+    if os.path.exists("projects.json"):
+        with open("projects.json", 'r', encoding='utf-8') as f:
+            projects = json.load(f)
+    projects.append(project)
+    with open("projects.json", 'w', encoding='utf-8') as f:
+        json.dump(projects, f, indent=2, ensure_ascii=False)
+    return {"status": "added", "project": project}
+
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "version": "0.4.0"}
+    return {"status": "healthy", "version": "0.5.0"}
 
 if __name__ == "__main__":
     import uvicorn

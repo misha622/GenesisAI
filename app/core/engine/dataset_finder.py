@@ -29,6 +29,8 @@ class DatasetFinder:
 
     def search(self, query: str, task: Optional[str] = None, max_results: int = 5) -> List[DatasetInfo]:
         results = []
+        # 0. Локальная база (fallback)
+        local_results = self._search_local(query, task, max_results)
         # 1. Kaggle API (реальные датасеты, тысячи)
         kaggle_results = self._search_kaggle(query, max_results)
         results.extend(kaggle_results)
@@ -41,6 +43,8 @@ class DatasetFinder:
             local_results = self._search_local(query, task, max_results - len(results))
             existing_urls = {r.url for r in results}
             results.extend([r for r in local_results if r.url not in existing_urls])
+        if not results:
+            results = local_results
         return results[:max_results]
 
     def _search_kaggle(self, query: str, max_results: int) -> List[DatasetInfo]:
@@ -62,7 +66,7 @@ class DatasetFinder:
                         format=str(getattr(ds, 'file_type', 'CSV')),
                         rating=float(getattr(ds, 'usability', 0) or 0),
                         downloads=int(getattr(ds, 'totalDownloads', 0) or 0),
-                        tags=list(getattr(ds, 'tags', []) or []),
+                        tags=[str(t) for t in (getattr(ds, 'tags', []) or [])],
                     ))
                 except: continue
         except Exception as e:
