@@ -1,0 +1,531 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Genesis AI — AutoML Platform</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--nav-w:56px;--accent:#6C5CE7;--accent-dim:#A29BFE;--surface:#fff;--page:#F1EFE8;--card:#F8F7F2;--card2:#fff;--txt:#1a1a18;--txt2:#6b6b63;--txt3:#9b9b93;--brd:rgba(0,0,0,.08);--brd2:rgba(0,0,0,.13);--r:8px;--success:#00b894;--warning:#fdcb6e;--danger:#e17055}
+@media(prefers-color-scheme:dark){:root{--page:#1a1a18;--card:#242420;--card2:#2c2c28;--txt:#e8e6dc;--txt2:#a8a69c;--txt3:#6b6b63;--brd:rgba(255,255,255,.07);--brd2:rgba(255,255,255,.12)}}
+body{font-family:system-ui,sans-serif;background:var(--page);color:var(--txt);display:flex;height:100vh;overflow:hidden;font-size:14px}
+nav{width:var(--nav-w);background:var(--card2);border-right:.5px solid var(--brd);display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:4px;flex-shrink:0;z-index:10}
+.nav-logo{width:32px;height:32px;border-radius:10px;background:var(--accent);display:flex;align-items:center;justify-content:center;margin-bottom:8px}
+.nav-logo svg{width:18px;height:18px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round}
+.nav-btn{width:40px;height:40px;border-radius:var(--r);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--txt3);transition:.15s;border:none;background:none;position:relative}
+.nav-btn:hover{background:var(--card);color:var(--txt)}
+.nav-btn.active{background:rgba(108,92,231,.12);color:var(--accent)}
+.nav-btn i{font-size:18px}
+.nav-divider{width:24px;height:.5px;background:var(--brd);margin:4px 0}
+.nav-spacer{flex:1}
+main{flex:1;display:flex;overflow:hidden}
+.panel{flex:1;display:none;overflow:hidden}
+.panel.active{display:flex;flex-direction:column}
+.topbar{height:52px;border-bottom:.5px solid var(--brd);display:flex;align-items:center;padding:0 20px;gap:12px;background:var(--card2);flex-shrink:0}
+.topbar h1{font-size:15px;font-weight:500;color:var(--txt)}
+.topbar-sub{font-size:12px;color:var(--txt3)}
+.topbar-spacer{flex:1}
+.badge{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500}
+.badge-green{background:rgba(0,184,148,.12);color:#00a87a}
+.badge-purple{background:rgba(108,92,231,.12);color:var(--accent)}
+.badge-amber{background:rgba(253,203,110,.2);color:#e67e00}
+.panel-body{flex:1;overflow-y:auto;padding:20px}
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.stat-card{background:var(--card2);border:.5px solid var(--brd);border-radius:12px;padding:16px;cursor:pointer;transition:.15s}
+.stat-card:hover{border-color:var(--brd2)}
+.stat-label{font-size:11px;color:var(--txt3);margin-bottom:4px}
+.stat-val{font-size:24px;font-weight:500;color:var(--txt)}
+.stat-sub{font-size:11px;color:var(--txt3);margin-top:2px}
+.stat-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:8px}
+.icon-purple{background:rgba(108,92,231,.12);color:var(--accent)}
+.icon-green{background:rgba(0,184,148,.12);color:var(--success)}
+.icon-amber{background:rgba(253,203,110,.2);color:#e67e00}
+.icon-coral{background:rgba(225,112,85,.12);color:var(--danger)}
+.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.section-title{font-size:13px;font-weight:500;color:var(--txt)}
+.sec-link{font-size:12px;color:var(--accent);cursor:pointer;border:none;background:none;padding:0}
+.sec-link:hover{text-decoration:underline}
+.cards-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
+.info-card{background:var(--card2);border:.5px solid var(--brd);border-radius:12px;padding:16px}
+.model-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:.5px solid var(--brd)}
+.model-row:last-child{border-bottom:none}
+.model-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+.model-name{font-size:13px;font-weight:500;color:var(--txt);flex:1}
+.model-meta{font-size:11px;color:var(--txt3)}
+.metric-chip{padding:2px 6px;border-radius:4px;font-size:11px;background:var(--card);color:var(--txt2)}
+.mini-chart{height:48px;display:flex;align-items:flex-end;gap:3px;margin:8px 0}
+.bar{flex:1;border-radius:3px 3px 0 0;min-height:4px;transition:.3s}
+.agent-wrap{display:flex;flex:1;overflow:hidden}
+.agent-sidebar{width:220px;border-right:.5px solid var(--brd);display:flex;flex-direction:column;flex-shrink:0}
+.agent-sidebar-head{padding:12px 14px;font-size:12px;font-weight:500;color:var(--txt3);border-bottom:.5px solid var(--brd)}
+.convo-list{overflow-y:auto;flex:1}
+.convo-item{padding:10px 14px;cursor:pointer;border-bottom:.5px solid var(--brd);transition:.12s}
+.convo-item:hover{background:var(--card)}
+.convo-item.active{background:rgba(108,92,231,.07)}
+.convo-title{font-size:12px;font-weight:500;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.convo-time{font-size:10px;color:var(--txt3);margin-top:2px}
+.chat-area{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.chat-messages{flex:1;overflow-y:auto;padding:16px}
+.msg{display:flex;gap:10px;margin-bottom:14px;align-items:flex-start}
+.msg.user{flex-direction:row-reverse}
+.avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;flex-shrink:0}
+.avatar-ai{background:rgba(108,92,231,.15);color:var(--accent)}
+.avatar-user{background:rgba(0,184,148,.15);color:var(--success)}
+.bubble{max-width:520px;padding:10px 13px;border-radius:12px;font-size:13px;line-height:1.55}
+.bubble-ai{background:var(--card2);border:.5px solid var(--brd);border-radius:12px 12px 12px 3px;color:var(--txt)}
+.bubble-user{background:var(--accent);color:#fff;border-radius:12px 12px 3px 12px}
+.data-card{background:var(--card);border-radius:8px;padding:10px 12px;margin-top:8px;font-size:11px;border:.5px solid var(--brd)}
+.data-card .dc-title{font-size:12px;font-weight:500;color:var(--txt);margin-bottom:6px}
+.dc-row{display:flex;justify-content:space-between;padding:2px 0;color:var(--txt2)}
+.dc-val{font-weight:500;color:var(--txt)}
+.chat-input-area{padding:12px 16px;border-top:.5px solid var(--brd);background:var(--card2)}
+.intent-chips{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+.chip{padding:4px 10px;border-radius:20px;font-size:11px;background:var(--card);border:.5px solid var(--brd);cursor:pointer;color:var(--txt2);transition:.12s;white-space:nowrap}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.input-row{display:flex;gap:8px;align-items:center}
+.chat-input{flex:1;padding:9px 12px;border-radius:var(--r);border:.5px solid var(--brd2);background:var(--card);color:var(--txt);font-size:13px;outline:none;transition:.15s;font-family:inherit}
+.chat-input:focus{border-color:var(--accent)}
+.send-btn{width:36px;height:36px;border-radius:var(--r);background:var(--accent);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;transition:.12s;flex-shrink:0}
+.send-btn:hover{background:#5a4cd6}
+.send-btn i{font-size:16px}
+.mkt-filters{display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
+.filter-btn{padding:5px 12px;border-radius:20px;font-size:12px;border:.5px solid var(--brd);background:var(--card2);color:var(--txt2);cursor:pointer;transition:.12s}
+.filter-btn.active,.filter-btn:hover{border-color:var(--accent);color:var(--accent);background:rgba(108,92,231,.07)}
+.search-box{flex:1;max-width:280px;padding:6px 12px;border-radius:var(--r);border:.5px solid var(--brd2);background:var(--card2);color:var(--txt);font-size:12px;outline:none;font-family:inherit}
+.search-box:focus{border-color:var(--accent)}
+.mkt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.mkt-card{background:var(--card2);border:.5px solid var(--brd);border-radius:12px;padding:16px;cursor:pointer;transition:.15s}
+.mkt-card:hover{border-color:var(--accent);transform:translateY(-1px)}
+.mkt-card-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+.mkt-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px}
+.mkt-price{font-size:13px;font-weight:500;color:var(--accent)}
+.mkt-title{font-size:13px;font-weight:500;color:var(--txt);margin-bottom:4px}
+.mkt-desc{font-size:11px;color:var(--txt3);line-height:1.4;margin-bottom:10px}
+.mkt-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.stars{color:#fdcb6e;font-size:11px}
+.mkt-stats{display:flex;gap:12px;font-size:11px;color:var(--txt3);margin-top:8px;padding-top:8px;border-top:.5px solid var(--brd)}
+.reg-table-wrap{background:var(--card2);border:.5px solid var(--brd);border-radius:12px;overflow:hidden}
+.reg-table{width:100%;border-collapse:collapse;font-size:12px}
+.reg-table th{padding:10px 14px;font-weight:500;color:var(--txt3);text-align:left;border-bottom:.5px solid var(--brd);background:var(--card);font-size:11px}
+.reg-table td{padding:10px 14px;border-bottom:.5px solid var(--brd);color:var(--txt)}
+.reg-table tr:last-child td{border-bottom:none}
+.reg-table tr:hover td{background:var(--card)}
+.task-badge{padding:2px 7px;border-radius:4px;font-size:10px;font-weight:500}
+.task-cls{background:rgba(108,92,231,.1);color:var(--accent)}
+.task-reg{background:rgba(0,184,148,.1);color:var(--success)}
+.task-mcls{background:rgba(253,203,110,.18);color:#c87e00}
+.metric-bar-wrap{display:flex;align-items:center;gap:6px}
+.metric-bar{height:4px;border-radius:2px;background:var(--brd);flex:1;overflow:hidden}
+.metric-bar-fill{height:100%;border-radius:2px;background:var(--accent)}
+.memory-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.memory-card{background:var(--card2);border:.5px solid var(--brd);border-radius:12px;padding:16px}
+.memory-card-title{font-size:12px;font-weight:500;color:var(--txt3);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.fact-item{display:flex;align-items:baseline;gap:6px;padding:5px 0;border-bottom:.5px solid var(--brd);font-size:12px}
+.fact-item:last-child{border-bottom:none}
+.fact-key{color:var(--txt3);min-width:70px;flex-shrink:0}
+.fact-val{color:var(--txt);flex:1}
+.fact-conf{padding:1px 5px;border-radius:3px;font-size:10px;background:var(--card)}
+.graph-visual{background:var(--card);border-radius:8px;padding:12px;min-height:180px;position:relative;overflow:hidden}
+.node-dot{position:absolute;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;cursor:pointer;transition:.2s;text-align:center;line-height:1.1;padding:2px}
+.node-dot:hover{transform:scale(1.1)}
+.node-main{width:52px;height:52px;background:var(--accent);color:#fff}
+.node-fact{width:38px;height:38px;background:rgba(108,92,231,.15);color:var(--accent)}
+.edge-svg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+.persona-block{font-size:12px;color:var(--txt);line-height:1.7;background:var(--card);border-radius:8px;padding:12px;font-family:monospace}
+.progress-wrap{margin-top:6px}
+.progress-label{display:flex;justify-content:space-between;font-size:11px;color:var(--txt3);margin-bottom:3px}
+.progress-track{height:4px;border-radius:2px;background:var(--brd);overflow:hidden}
+.progress-fill{height:100%;border-radius:2px;background:var(--accent)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.typing-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--txt3);animation:blink 1.2s infinite;margin:0 1px}
+.typing-dot:nth-child(2){animation-delay:.2s}
+.typing-dot:nth-child(3){animation-delay:.4s}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--brd2);border-radius:2px}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"/></svg>
+  </div>
+  <button class="nav-btn active" onclick="show('dashboard')" id="nb-dashboard" title="Dashboard"><i class="ti ti-layout-dashboard"></i></button>
+  <button class="nav-btn" onclick="show('agent')" id="nb-agent" title="Agent"><i class="ti ti-robot"></i></button>
+  <button class="nav-btn" onclick="show('marketplace')" id="nb-marketplace" title="Marketplace"><i class="ti ti-building-store"></i></button>
+  <button class="nav-btn" onclick="show('registry')" id="nb-registry" title="Registry"><i class="ti ti-database"></i></button>
+  <button class="nav-btn" onclick="show('memory')" id="nb-memory" title="Memory"><i class="ti ti-brain"></i></button>
+  <div class="nav-divider"></div>
+  <div class="nav-spacer"></div>
+  <button class="nav-btn" onclick="show('settings')" id="nb-settings" title="Settings"><i class="ti ti-settings"></i></button>
+</nav>
+
+<main>
+
+<div class="panel active" id="p-dashboard">
+  <div class="topbar">
+    <h1>Genesis AI</h1>
+    <span class="topbar-sub">AutoML Platform</span>
+    <div class="topbar-spacer"></div>
+    <span class="badge badge-green">● Online</span>
+  </div>
+  <div class="panel-body">
+    <div class="stats-grid">
+      <div class="stat-card" onclick="show('registry')">
+        <div class="stat-icon icon-purple"><i class="ti ti-brain" style="font-size:16px"></i></div>
+        <div class="stat-label">Models trained</div>
+        <div class="stat-val">24</div>
+        <div class="stat-sub">+3 this week</div>
+      </div>
+      <div class="stat-card" onclick="show('marketplace')">
+        <div class="stat-icon icon-green"><i class="ti ti-building-store" style="font-size:16px"></i></div>
+        <div class="stat-label">Marketplace listings</div>
+        <div class="stat-val">8</div>
+        <div class="stat-sub">412 total calls</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon icon-amber"><i class="ti ti-coin" style="font-size:16px"></i></div>
+        <div class="stat-label">Author earnings</div>
+        <div class="stat-val">$47.20</div>
+        <div class="stat-sub">Platform fee 25%</div>
+      </div>
+      <div class="stat-card" onclick="show('memory')">
+        <div class="stat-icon icon-coral"><i class="ti ti-chart-dots" style="font-size:16px"></i></div>
+        <div class="stat-label">Memory facts</div>
+        <div class="stat-val">138</div>
+        <div class="stat-sub">Across 3 sessions</div>
+      </div>
+    </div>
+    <div class="cards-row">
+      <div class="info-card">
+        <div class="section-head"><span class="section-title">Recent models</span><button class="sec-link" onclick="show('registry')">View all →</button></div>
+        <div class="model-row">
+          <div class="model-icon icon-purple"><i class="ti ti-sparkles" style="font-size:13px"></i></div>
+          <div><div class="model-name">binary_xgboost_churn</div><div class="model-meta">Accuracy 0.921 · f1 0.908</div></div>
+          <span class="metric-chip">0.921</span>
+        </div>
+        <div class="model-row">
+          <div class="model-icon icon-green"><i class="ti ti-tree" style="font-size:13px"></i></div>
+          <div><div class="model-name">regression_rf_housing</div><div class="model-meta">R² 0.887 · RMSE 14.2k</div></div>
+          <span class="metric-chip">0.887</span>
+        </div>
+        <div class="model-row">
+          <div class="model-icon icon-amber"><i class="ti ti-chart-line" style="font-size:13px"></i></div>
+          <div><div class="model-name">multiclass_xgboost_iris</div><div class="model-meta">Accuracy 0.967 · f1 0.966</div></div>
+          <span class="metric-chip">0.967</span>
+        </div>
+      </div>
+      <div class="info-card">
+        <div class="section-head"><span class="section-title">Training activity (7 days)</span></div>
+        <div class="mini-chart" id="activity-chart"></div>
+        <div style="display:flex;gap:16px;font-size:11px;color:var(--txt3);margin-top:4px">
+          <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="panel" id="p-agent">
+  <div class="topbar">
+    <i class="ti ti-robot" style="color:var(--accent)"></i>
+    <h1>Genesis Agent</h1>
+    <span class="topbar-sub">AutoML assistant</span>
+    <div class="topbar-spacer"></div>
+    <span class="badge badge-green">● Ready</span>
+  </div>
+  <div class="agent-wrap">
+    <div class="agent-sidebar">
+      <div class="agent-sidebar-head">Conversations</div>
+      <div class="convo-list" id="convo-list"></div>
+    </div>
+    <div class="chat-area">
+      <div class="chat-messages" id="chat-messages"></div>
+      <div class="chat-input-area">
+        <div class="intent-chips">
+          <span class="chip" onclick="sendChip(this)">📊 проанализируй датасет</span>
+          <span class="chip" onclick="sendChip(this)">🤖 обучи xgboost</span>
+          <span class="chip" onclick="sendChip(this)">📋 покажи все модели</span>
+          <span class="chip" onclick="sendChip(this)">🏆 найди лучшую модель</span>
+          <span class="chip" onclick="sendChip(this)">❓ помощь</span>
+        </div>
+        <div class="input-row">
+          <input class="chat-input" id="chat-in" placeholder="Message agent..." onkeydown="if(event.key==='Enter')sendMsg()">
+          <button class="send-btn" onclick="sendMsg()"><i class="ti ti-send"></i></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="panel" id="p-marketplace">
+  <div class="topbar">
+    <i class="ti ti-building-store" style="color:var(--accent)"></i>
+    <h1>Marketplace</h1>
+    <span class="topbar-sub">8 listings</span>
+    <div class="topbar-spacer"></div>
+    <span class="badge badge-amber">Commission 25%</span>
+  </div>
+  <div class="panel-body">
+    <div class="mkt-filters">
+      <input class="search-box" placeholder="Search..." oninput="filterMkt(this.value)">
+      <button class="filter-btn active" onclick="setMktFilter(this,'all')">All</button>
+      <button class="filter-btn" onclick="setMktFilter(this,'binary_classification')">Classification</button>
+      <button class="filter-btn" onclick="setMktFilter(this,'regression')">Regression</button>
+      <button class="filter-btn" onclick="setMktFilter(this,'multiclass')">Multiclass</button>
+    </div>
+    <div class="mkt-grid" id="mkt-grid"></div>
+  </div>
+</div>
+
+<div class="panel" id="p-registry">
+  <div class="topbar">
+    <i class="ti ti-database" style="color:var(--accent)"></i>
+    <h1>Model Registry</h1>
+    <span class="topbar-sub">24 models</span>
+    <div class="topbar-spacer"></div>
+    <button class="filter-btn active" onclick="setRegTask('all')">All</button>
+    <button class="filter-btn" onclick="setRegTask('binary')">Binary</button>
+    <button class="filter-btn" onclick="setRegTask('regression')">Regression</button>
+    <button class="filter-btn" onclick="setRegTask('multiclass')">Multiclass</button>
+  </div>
+  <div class="panel-body">
+    <div class="reg-table-wrap">
+      <table class="reg-table">
+        <thead><tr><th>Model ID</th><th>Task</th><th>Type</th><th>Metric</th><th>Features</th><th>Created</th></tr></thead>
+        <tbody id="reg-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="panel" id="p-memory">
+  <div class="topbar">
+    <i class="ti ti-brain" style="color:var(--accent)"></i>
+    <h1>Memory</h1>
+    <span class="topbar-sub">Episodic · Graph · Persona</span>
+    <div class="topbar-spacer"></div>
+    <span class="badge badge-purple">138 facts</span>
+  </div>
+  <div class="panel-body">
+    <div class="memory-grid">
+      <div class="memory-card">
+        <div class="memory-card-title"><i class="ti ti-clock"></i> Episodic Memory</div>
+        <div id="facts-list"></div>
+      </div>
+      <div class="memory-card">
+        <div class="memory-card-title"><i class="ti ti-chart-network"></i> Knowledge Graph</div>
+        <div class="graph-visual" id="kg-visual"><svg class="edge-svg" id="kg-svg"></svg></div>
+      </div>
+    </div>
+    <div class="memory-card">
+      <div class="memory-card-title"><i class="ti ti-user-circle"></i> Persona Core</div>
+      <div class="persona-block" id="persona-block"></div>
+    </div>
+  </div>
+</div>
+
+<div class="panel" id="p-settings">
+  <div class="topbar"><i class="ti ti-settings" style="color:var(--accent)"></i><h1>Settings</h1><div class="topbar-spacer"></div></div>
+  <div class="panel-body">
+    <div class="info-card" style="max-width:480px">
+      <div class="section-title" style="margin-bottom:14px">Platform config</div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <label style="color:var(--txt2);font-size:13px">LLM API key<input class="chat-input" type="password" style="margin-top:4px"></label>
+        <label style="color:var(--txt2);font-size:13px">Database URL<input class="chat-input" style="margin-top:4px"></label>
+        <label style="color:var(--txt2);font-size:13px">Registry storage<input class="chat-input" value="./registry" style="margin-top:4px"></label>
+        <label style="color:var(--txt2);font-size:13px">Marketplace commission<input class="chat-input" value="25%" style="margin-top:4px"></label>
+        <button class="filter-btn active" style="width:fit-content">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<script>
+const API = '/api';
+const panels = ['dashboard','agent','marketplace','registry','memory','settings'];
+function show(id) {
+  panels.forEach(p => {
+    document.getElementById('p-'+p).classList.toggle('active', p===id);
+    const nb = document.getElementById('nb-'+p);
+    if (nb) nb.classList.toggle('active', p===id);
+  });
+  if (id==='agent') loadConversations();
+  if (id==='marketplace') loadMarketplace();
+  if (id==='registry') loadRegistry();
+  if (id==='memory') loadMemory();
+}
+
+// Dashboard chart
+(function(){
+  const acts=[2,1,4,3,6,2,5];
+  const chart=document.getElementById('activity-chart');
+  if(!chart) return;
+  acts.forEach(v=>{
+    const b=document.createElement('div');
+    b.className='bar';
+    b.style.height=(v/6*44+4)+'px';
+    b.style.background=v===Math.max(...acts)?'var(--accent)':'rgba(108,92,231,.25)';
+    chart.appendChild(b);
+  });
+})();
+
+// Agent
+let conversationId = null;
+async function loadConversations() {
+  const res = await fetch(API+'/agent/conversations');
+  const data = await res.json();
+  const list = document.getElementById('convo-list');
+  list.innerHTML = data.conversations.map(c => 
+    `<div class="convo-item${c.id===conversationId?' active':''}" onclick="loadChat('${c.id}')">
+      <div class="convo-title">${c.title}</div>
+      <div class="convo-time">${c.date}</div>
+    </div>`
+  ).join('');
+}
+async function loadChat(id) {
+  conversationId = id;
+  const res = await fetch(API+'/agent/chat/'+id);
+  const data = await res.json();
+  const msgs = document.getElementById('chat-messages');
+  msgs.innerHTML = data.messages.map(m =>
+    `<div class="msg${m.role==='user'?' user':''}">
+      <div class="avatar ${m.role==='user'?'avatar-user':'avatar-ai'}">${m.role==='user'?'U':'G'}</div>
+      <div class="bubble ${m.role==='user'?'bubble-user':'bubble-ai'}">${m.content}</div>
+    </div>`
+  ).join('');
+  msgs.scrollTop = msgs.scrollHeight;
+}
+async function sendMsg() {
+  const inp = document.getElementById('chat-in');
+  const msg = inp.value.trim();
+  if (!msg) return;
+  inp.value = '';
+  addMsg(msg, true);
+  const res = await fetch(API+'/agent/message', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({message: msg, conversation_id: conversationId})
+  });
+  const data = await res.json();
+  conversationId = data.conversation_id;
+  addMsg(data.response, false);
+  loadConversations();
+}
+function addMsg(html, isUser) {
+  const wrap = document.getElementById('chat-messages');
+  const d = document.createElement('div');
+  d.className = 'msg' + (isUser ? ' user' : '');
+  d.innerHTML = `<div class="avatar ${isUser?'avatar-user':'avatar-ai'}">${isUser?'U':'G'}</div>
+    <div class="bubble ${isUser?'bubble-user':'bubble-ai'}">${html}</div>`;
+  wrap.appendChild(d);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+function sendChip(el) {
+  document.getElementById('chat-in').value = el.textContent.replace(/^[^\s]+\s/, '');
+  sendMsg();
+}
+
+// Marketplace
+async function loadMarketplace() {
+  const res = await fetch(API+'/marketplace/listings');
+  const data = await res.json();
+  document.getElementById('mkt-grid').innerHTML = data.listings.map(m => `
+    <div class="mkt-card">
+      <div class="mkt-card-head"><div class="mkt-icon">🤖</div><span class="mkt-price">$${m.price_per_call}/call</span></div>
+      <div class="mkt-title">${m.title}</div>
+      <div class="mkt-desc">${m.description}</div>
+      <div class="mkt-meta">
+        <span class="stars">${'★'.repeat(Math.floor(m.rating||0))}${'☆'.repeat(5-Math.floor(m.rating||0))}</span>
+        <span class="badge badge-purple" style="font-size:10px">${m.task}</span>
+      </div>
+      <div class="mkt-stats"><span>📞 ${m.total_calls} calls</span><span>👤 ${m.author}</span></div>
+    </div>`).join('');
+}
+let mktFilter = 'all';
+function setMktFilter(btn, f) {
+  document.querySelectorAll('.mkt-filters .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  mktFilter = f;
+  loadMarketplaceFiltered();
+}
+async function loadMarketplaceFiltered() {
+  const url = mktFilter === 'all' ? API+'/marketplace/listings' : API+'/marketplace/listings?task='+mktFilter;
+  const res = await fetch(url);
+  const data = await res.json();
+  document.getElementById('mkt-grid').innerHTML = data.listings.map(m => `
+    <div class="mkt-card">
+      <div class="mkt-card-head"><div class="mkt-icon">🤖</div><span class="mkt-price">$${m.price_per_call}/call</span></div>
+      <div class="mkt-title">${m.title}</div>
+      <div class="mkt-desc">${m.description}</div>
+    </div>`).join('');
+}
+function filterMkt(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('.mkt-card').forEach(c => {
+    c.style.display = c.innerText.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
+// Registry
+async function loadRegistry() {
+  const res = await fetch(API+'/registry/models');
+  const data = await res.json();
+  document.getElementById('reg-body').innerHTML = data.models.map(r => `
+    <tr>
+      <td style="font-family:monospace;font-size:11px">${r.model_id.slice(0,42)}…</td>
+      <td><span class="task-badge ${r.task.includes('reg')?'task-reg':r.task.includes('multi')?'task-mcls':'task-cls'}">${r.task.replace('_classification','')}</span></td>
+      <td>${r.model_type}</td>
+      <td><div class="metric-bar-wrap"><span>${Object.values(r.metrics||{})[0]||'-'}</span><div class="metric-bar"><div class="metric-bar-fill" style="width:${(Object.values(r.metrics||{})[0]||0)*100}%"></div></div></div></td>
+      <td>${(r.features||[]).length}</td>
+      <td>${r.created_at?.slice(0,10)||'-'}</td>
+    </tr>`).join('');
+}
+let regTask = 'all';
+function setRegTask(t) { regTask = t; loadRegistryFiltered(); }
+async function loadRegistryFiltered() {
+  const url = regTask === 'all' ? API+'/registry/models' : API+'/registry/models?task='+regTask;
+  const res = await fetch(url);
+  const data = await res.json();
+  document.getElementById('reg-body').innerHTML = data.models.map(r => `
+    <tr><td>${r.model_id.slice(0,42)}…</td><td>${r.task}</td><td>${r.model_type}</td><td>${Object.values(r.metrics||{})[0]||'-'}</td><td>${(r.features||[]).length}</td><td>${r.created_at?.slice(0,10)||'-'}</td></tr>
+  `).join('');
+}
+
+// Memory
+async function loadMemory() {
+  const [factsRes, personaRes] = await Promise.all([
+    fetch(API+'/memory/facts'),
+    fetch(API+'/memory/persona')
+  ]);
+  const facts = await factsRes.json();
+  const persona = await personaRes.json();
+  
+  document.getElementById('facts-list').innerHTML = (facts.facts||[]).slice(0,8).map(f => `
+    <div class="fact-item">
+      <span class="fact-key">${f.predicate}</span>
+      <span class="fact-val">${f.object}</span>
+      <span class="fact-conf">${f.confidence}</span>
+    </div>`).join('');
+  
+  document.getElementById('persona-block').textContent = persona.persona || 'No persona generated yet';
+  
+  setTimeout(() => {
+    const v = document.getElementById('kg-visual');
+    if (!v) return;
+    const w = v.clientWidth || 260, h = 180;
+    const svg = document.getElementById('kg-svg');
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    svg.innerHTML = '';
+    v.querySelectorAll('.node-dot').forEach(n => n.remove());
+  }, 100);
+}
+
+// Initial load
+loadMarketplace();
+loadRegistry();
+</script>
+</body>
+</html>
