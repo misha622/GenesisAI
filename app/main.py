@@ -1,25 +1,22 @@
-﻿import sys, os
+﻿import sys, os, json
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
-import json
 
-app = FastAPI(title="Genesis AI", version="0.5.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app = FastAPI(title="Genesis AI", version="0.7.0")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-_agent = None
-def get_agent():
-    global _agent
-    if _agent is None:
+_agents: Dict[str, Any] = {}
+def get_agent(conversation_id: str = "default"):
+    if conversation_id not in _agents:
         from app.core.agent import GenesisAgent
-        _agent = GenesisAgent()
-    return _agent
+        _agents[conversation_id] = GenesisAgent()
+    return _agents[conversation_id]
 
 class MessageRequest(BaseModel):
     message: str
@@ -33,54 +30,46 @@ class PublishRequest(BaseModel):
     price_per_call: float = 0.01
 
 @app.get("/")
-async def root():
-    return FileResponse("static/index.html")
+async def root(): return FileResponse("static/index.html")
 
 @app.get("/api/agent/conversations")
 async def agent_conversations():
-    agent = get_agent()
-    conversations = agent.list_conversations()
-    return {"conversations": conversations}
+    from app.db.database import GenesisDB
+    return {"conversations": GenesisDB().list_chats()}
+
+@app.get("/api/agent/chat/{conversation_id}")
+async def agent_chat(conversation_id: str):
+    from app.db.database import GenesisDB
+    return {"messages": GenesisDB().get_messages(conversation_id)}
+
+@app.post("/api/agent/message")
+async def agent_message(req: MessageRequest):
+    cid = req.conversation_id or "default"
+    agent = get_agent(cid)
+    response = agent.process(req.message, cid, req.projects)
+    return {"response": response.message, "conversation_id": cid, "data": response.data}
 
 @app.post("/api/agent/chat/{conversation_id}/rename")
-async def rename_chat(conversation_id: str, data: dict):
-    agent = get_agent()
-    if conversation_id in agent.chat_store:
-        agent.chat_store[conversation_id]['title'] = data.get('title', conversation_id)
-        agent._save_chats()
+async def rename_chat(conversation_id: str, data: Dict[str, Any]):
+    from app.db.database import GenesisDB
+    GenesisDB().rename_chat(conversation_id, data.get('title', conversation_id))
     return {"status": "renamed"}
 
 @app.delete("/api/agent/chat/{conversation_id}")
 async def delete_chat(conversation_id: str):
-    agent = get_agent()
-    if conversation_id in agent.chat_store:
-        del agent.chat_store[conversation_id]
-        agent._save_chats()
+    from app.db.database import GenesisDB
+    GenesisDB().delete_chat(conversation_id)
     return {"status": "deleted"}
-
-@app.get("/api/agent/chat/{conversation_id}")
-async def agent_chat(conversation_id: str):
-    agent = get_agent()
-    messages = agent.get_chat_history(conversation_id)
-    return {"messages": messages}
-
-@app.post("/api/agent/message")
-async def agent_message(req: MessageRequest):
-    agent = get_agent()
-    response = agent.process(req.message, req.conversation_id, req.projects)
-    return {"response": response.message, "conversation_id": req.conversation_id or "default", "data": response.data}
 
 @app.get("/api/marketplace/listings")
 async def marketplace_listings(task: Optional[str] = None):
     from app.core.marketplace import Marketplace
-    mp = Marketplace()
-    return {"listings": mp.search(task=task) if task else mp.search()}
+    return {"listings": Marketplace().search(task=task) if task else Marketplace().search()}
 
 @app.post("/api/marketplace/publish")
 async def marketplace_publish(req: PublishRequest):
     from app.core.marketplace import Marketplace
-    mp = Marketplace()
-    lid = mp.publish(author=req.author, model_id=req.model_id, title=req.title, description=req.description, task=req.task, model_type=req.model_type, metrics=req.metrics, price_per_call=req.price_per_call)
+    lid = Marketplace().publish(author=req.author, model_id=req.model_id, title=req.title, description=req.description, task=req.task, model_type=req.model_type, metrics=req.metrics, price_per_call=req.price_per_call)
     return {"listing_id": lid}
 
 @app.get("/api/marketplace/stats")
@@ -110,8 +99,8 @@ async def registry_stats():
 
 @app.get("/api/memory/facts")
 async def memory_facts():
-    from app.core.memory.graph import KnowledgeGraph
-    return {"facts": KnowledgeGraph().get_facts_about("user")}
+    from app.db.database import GenesisDB
+    return {"facts": GenesisDB().get_facts()}
 
 @app.get("/api/memory/persona")
 async def memory_persona():
@@ -127,41 +116,23 @@ async def memory_graph():
 @app.get("/api/datasets/search")
 async def dataset_search(q: str):
     from app.core.engine.dataset_finder import DatasetFinder
-    results = DatasetFinder().search(q)
-    return {"query": q, "results": [{"title": d.title, "url": d.url, "source": d.source} for d in results]}
-
+    return {"query": q, "results": [{"title": d.title, "url": d.url, "source": d.source} for d in DatasetFinder().search(q)]}
 
 @app.get("/api/projects")
 async def get_projects():
-    import json, os
-    path = "projects.json"
-    if os.path.exists(path):
-        with open(path, 'r', encoding='utf-8') as f:
-            return {"projects": json.load(f)}
-    return {"projects": []}
+    from app.db.database import GenesisDB
+    return {"projects": GenesisDB().get_projects()}
 
 @app.post("/api/projects")
 async def save_projects(data: Dict[str, Any]):
-    import json
-    with open("projects.json", 'w', encoding='utf-8') as f:
-        json.dump(data.get("projects", []), f, indent=2, ensure_ascii=False)
+    from app.db.database import GenesisDB
+    db = GenesisDB()
+    for p in data.get("projects", []):
+        db.add_project(p.get("name",""), p.get("desc",""), p.get("task","other"), p.get("icon","🤖"))
     return {"status": "saved"}
 
-@app.post("/api/projects/add")
-async def add_project(project: Dict[str, Any]):
-    import json, os
-    projects = []
-    if os.path.exists("projects.json"):
-        with open("projects.json", 'r', encoding='utf-8') as f:
-            projects = json.load(f)
-    projects.append(project)
-    with open("projects.json", 'w', encoding='utf-8') as f:
-        json.dump(projects, f, indent=2, ensure_ascii=False)
-    return {"status": "added", "project": project}
-
 @app.get("/health")
-async def health():
-    return {"status": "healthy", "version": "0.5.0"}
+async def health(): return {"status": "healthy", "version": "0.7.0"}
 
 if __name__ == "__main__":
     import uvicorn
