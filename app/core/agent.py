@@ -1,4 +1,4 @@
-﻿"""Genesis Agent - LLM-powered with SQLite + Memory + Code Generator."""
+﻿"""Genesis Agent - LLM-powered with SQLite + Memory + Code Generator + Web Research."""
 
 import json, os, re, pickle, numpy as np
 from typing import Dict, Any, Optional, List
@@ -11,7 +11,7 @@ class Intent:
     ANALYZE = "analyze"; TRAIN = "train"; FIND_BEST = "find_best"
     LIST_MODELS = "list_models"; DATASET_SEARCH = "dataset_search"
     INSTALL_DATASET = "install_dataset"; GENERATE_CODE = "generate_code"
-    HELP = "help"; UNKNOWN = "unknown"
+    RESEARCH = "research_project"; HELP = "help"; UNKNOWN = "unknown"
 
 class AgentResponse:
     def __init__(self, message: str, data=None, success: bool = True):
@@ -27,7 +27,7 @@ def _to_native(obj):
 
 class GenesisAgent:
     SYSTEM_PROMPT = """Ты Genesis AI Agent — AutoML ассистент. Отвечай на том же языке, что и пользователь.
-Инструменты: analyze_dataset, train_model, find_best_model, list_models, search_datasets, generate_code.
+Инструменты: analyze_dataset, train_model, find_best_model, list_models, search_datasets, generate_code, research_project.
 Отвечай ТОЛЬКО в JSON: {"tool": "...", "args": {}, "message": "..."}."""
 
     ALLOWED_DIRS = ["./datasets", "./models", "./static", "./generated"]
@@ -63,7 +63,7 @@ class GenesisAgent:
             if text.startswith("{"): return json.loads(text)
             return {"tool": None, "message": text}
         except json.JSONDecodeError:
-            return {"tool": None, "message": "Извините, не понял. Попробуйте переформулировать."}
+            return {"tool": None, "message": "Извините, не понял."}
         except Exception as e:
             return {"tool": None, "message": "Извините, произошла ошибка."}
 
@@ -89,6 +89,20 @@ class GenesisAgent:
                 if 2 < len(value) < 100:
                     self.db.add_fact("user", predicate, value, 0.8)
 
+    def _do_research(self, message: str, args: Dict = None) -> AgentResponse:
+        from app.core.web_search import ProjectResearcher
+        researcher = ProjectResearcher()
+        description = (args or {}).get("description", message) if args else message
+        try:
+            research = researcher.research_project(description)
+            summary = researcher.format_research_summary(research)
+            return AgentResponse(
+                message=summary[:1500] + "\n\nПродолжить? Могу найти датасеты или обучить модель.",
+                data={"research": research}
+            )
+        except Exception as e:
+            return AgentResponse(message=f"Ошибка исследования: {e}", success=False)
+
     def _do_generate_code(self, message: str, args: Dict = None) -> AgentResponse:
         from app.core.codegen.generator import CodeGenerator
         gen = CodeGenerator(self.db)
@@ -97,7 +111,7 @@ class GenesisAgent:
             code = gen.generate_from_description(description)
             path = gen.save_code(code)
             return AgentResponse(
-                message=f"Сгенерировал ML-пайплайн!\nСохранён в: {path}\n\nВот код:\n```python\n{code[:800]}\n```\n\nЗапустить: python {path}",
+                message=f"Сгенерировал ML-пайплайн!\nСохранён в: {path}\n\n```python\n{code[:800]}\n```\n\nЗапустить: python {path}",
                 data={"code_path": path, "code": code[:500]}
             )
         except Exception as e:
@@ -131,7 +145,7 @@ class GenesisAgent:
             if tool in ('analyze_dataset','load_data','load_dataset','analyze'):
                 path = args.get("path", self._extract_path(message))
                 if path: return self._do_analyze(path)
-                return AgentResponse(message="Укажите путь к файлу. Например: datasets/churn_demo.csv", success=False)
+                return AgentResponse(message="Укажите путь к файлу.", success=False)
             elif tool in ('train_model','train','fit_model'):
                 return self._do_train(message, args)
             elif tool in ('find_best_model','best_model','find_best'):
@@ -140,6 +154,8 @@ class GenesisAgent:
                 return self._do_list_models()
             elif tool in ('search_datasets','search','find_datasets'):
                 return self._do_search(message, args)
+            elif tool in ('research_project','research','investigate'):
+                return self._do_research(message, args)
             elif tool in ('generate_code','codegen','generate_pipeline'):
                 return self._do_generate_code(message, args)
             elif tool in ('install_dataset','install','download_dataset'):
@@ -164,7 +180,6 @@ class GenesisAgent:
             if m:
                 path = m.group(1)
                 if os.path.exists(path) and self._validate_path(path): return path
-                else: print(f"[SECURITY] Blocked path: {path}")
         return self.current_dataset
 
     def _do_analyze(self, fp: str) -> AgentResponse:
