@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 
-app = FastAPI(title="Genesis AI", version="0.8.0")
+app = FastAPI(title="Genesis AI", version="0.9.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -19,15 +19,13 @@ def get_agent(conversation_id: str = "default"):
     return _agents[conversation_id]
 
 class MessageRequest(BaseModel):
-    message: str
-    conversation_id: Optional[str] = None
+    message: str; conversation_id: Optional[str] = None
     projects: Optional[List[Dict]] = None
 
 class PublishRequest(BaseModel):
     author: str; model_id: str; title: str; description: str
     task: str; model_type: str
-    metrics: Dict[str, float] = {}
-    price_per_call: float = 0.01
+    metrics: Dict[str, float] = {}; price_per_call: float = 0.01
 
 @app.get("/")
 async def root(): return FileResponse("static/index.html")
@@ -131,7 +129,6 @@ async def save_projects(data: Dict[str, Any]):
         db.add_project(p.get("name",""), p.get("desc",""), p.get("task","other"), p.get("icon","🤖"))
     return {"status": "saved"}
 
-# ---- API Keys ----
 @app.get("/api/keys")
 async def list_keys(user_name: str = None):
     from app.db.database import GenesisDB
@@ -175,8 +172,24 @@ async def model_predict(model_id: str, api_key: str, data: dict = None):
     except Exception as e:
         return {"error": str(e)}, 500
 
+@app.post("/api/codegen/generate")
+async def generate_code(data: dict):
+    from app.core.codegen.generator import CodeGenerator
+    from app.db.database import GenesisDB
+    gen = CodeGenerator(GenesisDB())
+    description = data.get("description", "")
+    code = gen.generate_from_description(description)
+    path = gen.save_code(code)
+    return {"code_path": path, "code": code}
+
+@app.get("/api/codegen/list")
+async def list_generated():
+    import os, glob
+    files = glob.glob("generated/*.py")
+    return {"files": [{"name": os.path.basename(f), "path": f} for f in files]}
+
 @app.get("/health")
-async def health(): return {"status": "healthy", "version": "0.8.0"}
+async def health(): return {"status": "healthy", "version": "0.9.0"}
 
 if __name__ == "__main__":
     import uvicorn

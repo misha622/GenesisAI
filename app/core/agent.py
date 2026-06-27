@@ -1,4 +1,4 @@
-﻿"""Genesis Agent - LLM-powered with SQLite + Memory."""
+﻿"""Genesis Agent - LLM-powered with SQLite + Memory + Code Generator."""
 
 import json, os, re, pickle, numpy as np
 from typing import Dict, Any, Optional, List
@@ -10,7 +10,8 @@ from app.core.engine.registry import ModelRegistry
 class Intent:
     ANALYZE = "analyze"; TRAIN = "train"; FIND_BEST = "find_best"
     LIST_MODELS = "list_models"; DATASET_SEARCH = "dataset_search"
-    INSTALL_DATASET = "install_dataset"; HELP = "help"; UNKNOWN = "unknown"
+    INSTALL_DATASET = "install_dataset"; GENERATE_CODE = "generate_code"
+    HELP = "help"; UNKNOWN = "unknown"
 
 class AgentResponse:
     def __init__(self, message: str, data=None, success: bool = True):
@@ -26,10 +27,10 @@ def _to_native(obj):
 
 class GenesisAgent:
     SYSTEM_PROMPT = """Ты Genesis AI Agent — AutoML ассистент. Отвечай на том же языке, что и пользователь.
-Инструменты: analyze_dataset, train_model, find_best_model, list_models, search_datasets.
+Инструменты: analyze_dataset, train_model, find_best_model, list_models, search_datasets, generate_code.
 Отвечай ТОЛЬКО в JSON: {"tool": "...", "args": {}, "message": "..."}."""
 
-    ALLOWED_DIRS = ["./datasets", "./models", "./static"]
+    ALLOWED_DIRS = ["./datasets", "./models", "./static", "./generated"]
 
     def __init__(self, profiler=None, trainer=None, registry=None):
         self.profiler = profiler or DatasetProfiler()
@@ -88,6 +89,20 @@ class GenesisAgent:
                 if 2 < len(value) < 100:
                     self.db.add_fact("user", predicate, value, 0.8)
 
+    def _do_generate_code(self, message: str, args: Dict = None) -> AgentResponse:
+        from app.core.codegen.generator import CodeGenerator
+        gen = CodeGenerator(self.db)
+        description = (args or {}).get('description', message) if args else message
+        try:
+            code = gen.generate_from_description(description)
+            path = gen.save_code(code)
+            return AgentResponse(
+                message=f"Сгенерировал ML-пайплайн!\nСохранён в: {path}\n\nВот код:\n```python\n{code[:800]}\n```\n\nЗапустить: python {path}",
+                data={"code_path": path, "code": code[:500]}
+            )
+        except Exception as e:
+            return AgentResponse(message=f"Ошибка генерации кода: {e}", success=False)
+
     def process(self, message: str, conversation_id: str = None, user_projects: List[Dict] = None) -> AgentResponse:
         cid = conversation_id or "default"
         self.db.create_chat(cid)
@@ -97,7 +112,6 @@ class GenesisAgent:
         projects = user_projects or self.db.get_projects()
         memory_context = self._get_memory_context()
 
-        # Приветствие с проектами
         if msg_count == 1 and projects:
             first_msg = message.lower().strip().rstrip('!,.')
             greetings = ["привет","hello","hi","здравствуйте","здарова","хай","прив","добрый день","доброе утро","добрый вечер"]
@@ -111,7 +125,6 @@ class GenesisAgent:
                 self.db.add_message(cid, "assistant", msg)
                 return AgentResponse(message=msg)
 
-        # LLM routing
         if self.llm:
             result = self._call_llm(message + memory_context)
             tool = result.get("tool"); args = result.get("args", {})
@@ -127,13 +140,14 @@ class GenesisAgent:
                 return self._do_list_models()
             elif tool in ('search_datasets','search','find_datasets'):
                 return self._do_search(message, args)
+            elif tool in ('generate_code','codegen','generate_pipeline'):
+                return self._do_generate_code(message, args)
             elif tool in ('install_dataset','install','download_dataset'):
                 return self._do_install(str(args.get("number", "1")))
             resp_msg = result.get("message", "Привет!")
             self.db.add_message(cid, "assistant", resp_msg)
             return AgentResponse(message=resp_msg)
 
-        # Regex fallback
         fp = self._extract_path(message)
         if fp: return self._do_analyze(fp)
         return AgentResponse(message="Привет! Я Genesis AI Agent. Спросите про ML!")
